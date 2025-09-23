@@ -1,0 +1,281 @@
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git clone https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME/tree/main
+Cloning into 'main'...
+fatal: repository 'https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME/tree/main/' not found
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git clone https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME
+fatal: destination path 'ABOUT_ME' already exists and is not an empty directory.
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git pull ABOUT ME
+fatal: not a git repository (or any of the parent directories): .git
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git pull dendyluqmannugroho2006-creator
+fatal: not a git repository (or any of the parent directories): .git
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git fetch https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME/tree/main
+fatal: not a git repository (or any of the parent directories): .git
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git fetch https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME
+fatal: not a git repository (or any of the parent directories): .git
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git fetch https://github.com/dendyluqmannugroho2006-creator
+fatal: not a git repository (or any of the parent directories): .git
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git fetch dendyluqmannugroho2006-creator
+fatal: not a git repository (or any of the parent directories): .git
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git fetch ABOUT ME
+fatal: not a git repository (or any of the parent directories): .git
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git fetch https://github.com/dendyluqmannugroho2006-creator/ABOUT ME
+fatal: not a git repository (or any of the parent directories): .git
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git clone https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME
+Cloning into 'ABOUT_ME'...
+remote: Enumerating objects: 15, done.
+remote: Counting objects: 100% (15/15), done.
+remote: Compressing objects: 100% (10/10), done.
+remote: Total 15 (delta 2), reused 0 (delta 0), pack-reused 0 (from 0)
+Receiving objects: 100% (15/15), 11.92 KiB | 642.00 KiB/s, done.
+Resolving deltas: 100% (2/2), done.
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ git pull ABOUT_ME
+fatal: not a git repository (or any of the parent directories): .git
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ cd ABOUT_ME
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git fetch README.MD
+fatal: invalid gitfile format: README.MD
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git fetch README
+fatal: 'README' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git fetch program
+fatal: invalid gitfile format: program
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git pull README
+fatal: 'README' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git fetch origin
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git fetch origin/README.MD
+fatal: 'origin/README.MD' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git fetch origin/README.md
+fatal: 'origin/README.md' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git merge kelompok-3-dendyluqmannugroho2006-creator
+merge: kelompok-3-dendyluqmannugroho2006-creator - not something we can merge
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git remove
+git: 'remove' is not a git command. See 'git --help'.
+
+The most similar command is
+        remote
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ git cd
+git: 'cd' is not a git command. See 'git --help'.
+
+The most similar command is
+        add
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ cd MINGW64
+bash: cd: MINGW64: No such file or directory
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ cd..
+bash: cd..: command not found
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/ABOUT_ME (main)
+$ cd ..
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ cd main kelompok-3-dendyluqmannugroho2006-creator
+bash: cd: too many arguments
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~
+$ cd kelompok-3-dendyluqmannugroho2006-creator
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git fetch ABOUT_ME
+fatal: 'ABOUT_ME' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git remote ABOUT_ME
+error: unknown subcommand: `ABOUT_ME'
+usage: git remote [-v | --verbose]
+   or: git remote add [-t <branch>] [-m <master>] [-f] [--tags | --no-tags] [--mirror=<fetch|push>] <name> <url>
+   or: git remote rename [--[no-]progress] <old> <new>
+   or: git remote remove <name>
+   or: git remote set-head <name> (-a | --auto | -d | --delete | <branch>)
+   or: git remote [-v | --verbose] show [-n] <name>
+   or: git remote prune [-n | --dry-run] <name>
+   or: git remote [-v | --verbose] update [-p | --prune] [(<group> | <remote>)...]
+   or: git remote set-branches [--add] <name> <branch>...
+   or: git remote get-url [--push] [--all] <name>
+   or: git remote set-url [--push] <name> <newurl> [<oldurl>]
+   or: git remote set-url --add <name> <newurl>
+   or: git remote set-url --delete <name> <url>
+
+    -v, --[no-]verbose    be verbose; must be placed before a subcommand
+
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git remote add ABOUT_ME
+usage: git remote add [<options>] <name> <url>
+
+    -f, --[no-]fetch      fetch the remote branches
+    --[no-]tags           import all tags and associated objects when fetching
+                          or do not fetch any tag at all (--no-tags)
+    -t, --[no-]track <branch>
+                          branch(es) to track
+    -m, --[no-]master <branch>
+                          master branch
+    --[no-]mirror[=(push|fetch)]
+                          set up remote as a mirror to push to or fetch from
+
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git remote add https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME
+usage: git remote add [<options>] <name> <url>
+
+    -f, --[no-]fetch      fetch the remote branches
+    --[no-]tags           import all tags and associated objects when fetching
+                          or do not fetch any tag at all (--no-tags)
+    -t, --[no-]track <branch>
+                          branch(es) to track
+    -m, --[no-]master <branch>
+                          master branch
+    --[no-]mirror[=(push|fetch)]
+                          set up remote as a mirror to push to or fetch from
+
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git remote add https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME/
+usage: git remote add [<options>] <name> <url>
+
+    -f, --[no-]fetch      fetch the remote branches
+    --[no-]tags           import all tags and associated objects when fetching
+                          or do not fetch any tag at all (--no-tags)
+    -t, --[no-]track <branch>
+                          branch(es) to track
+    -m, --[no-]master <branch>
+                          master branch
+    --[no-]mirror[=(push|fetch)]
+                          set up remote as a mirror to push to or fetch from
+
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git remote add ABOUT_ME https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME/
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git fetch ABOUT_ME
+remote: Enumerating objects: 15, done.
+remote: Counting objects: 100% (15/15), done.
+remote: Compressing objects: 100% (10/10), done.
+remote: Total 15 (delta 2), reused 0 (delta 0), pack-reused 0 (from 0)
+Unpacking objects: 100% (15/15), 11.90 KiB | 100.00 KiB/s, done.
+From https://github.com/dendyluqmannugroho2006-creator/ABOUT_ME
+ * [new branch]      main       -> ABOUT_ME/main
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git merge ABOUT_ME/kelompok-3-dendyluqmannugroho2006-creator --allow-unrelated-histories
+merge: ABOUT_ME/kelompok-3-dendyluqmannugroho2006-creator - not something we can merge
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git merge ABOUT_ME/main --allow-unrelated-histories
+Merge made by the 'ort' strategy.
+ README.md |  18 ++
+ program   | 697 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 715 insertions(+)
+ create mode 100644 README.md
+ create mode 100644 program
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git push
+Enumerating objects: 18, done.
+Counting objects: 100% (18/18), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (12/12), done.
+Writing objects: 100% (17/17), 12.25 KiB | 895.00 KiB/s, done.
+Total 17 (delta 3), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (3/3), completed with 1 local object.
+To https://github.com/Geofisika-UGM/kelompok-3-dendyluqmannugroho2006-creator
+   e822354..d250863  main -> main
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ cchi
+bash: cchi: command not found
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ echo
+
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ text.txt
+bash: text.txt: command not found
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git add text.txt
+fatal: pathspec 'text.txt' did not match any files
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
+$ git commit
+On branch main
+Your branch is up to date with 'origin/main'.
+
+nothing to commit, working tree clean
+
+LENOVO@LAPTOP-BLS4H1BB MINGW64 ~/kelompok-3-dendyluqmannugroho2006-creator (main)
