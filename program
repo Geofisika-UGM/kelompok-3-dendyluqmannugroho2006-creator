@@ -1,0 +1,697 @@
+This is the following program which I currently work on
+
+Gravimeter Program
+
+#!/usr/bin/env python3
+"""
+gravimeter_mission_grade_full.py
+
+Restored & reorganized single-file program that:
+ - preserves original features (simulation, adaptive median, 1D/3D Kalman + RTS,
+   gravity corrections, fault anomaly, CSV/JSON I/O, median/wiener/notch filters)
+ - fixes syntax errors and duplicates
+ - exposes modular PipelineManager that supports Kalman1D, Kalman3DRTS, RTS smoother
+ - provides demos for interactive testing
+
+Run: python gravimeter_mission_grade_full.py
+"""
+from _future_ import annotations
+import os
+import sys
+import math
+import time
+import json
+import csv
+import random
+import datetime
+from typing import List, Tuple, Callable, Optional, Any
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# Optional SciPy features (Notch, Wiener). If SciPy is absent,
+# we'll provide helpful error messages when the features are used.
+try:
+    from scipy.signal import iirnotch, filtfilt, wiener, medfilt
+    _HAS_SCIPY = True
+except Exception:
+    # Provide fallbacks that raise informative errors when used
+    _HAS_SCIPY = False
+
+    def _require_scipy(feature: str):
+        raise ImportError(f"scipy required for {feature}. Install with 'pip install scipy'")
+
+    def wiener(*args, **kwargs):
+        _require_scipy("wiener")
+
+    def medfilt(*args, **kwargs):
+        _require_scipy("medfilt")
+
+    def iirnotch(*args, **kwargs):
+        _require_scipy("iirnotch")
+
+    def filtfilt(*args, **kwargs):
+        _require_scipy("filtfilt")
+
+
+# -----------------------
+# Utilities
+# -----------------------
+def deg2rad(deg: float) -> float:
+    return deg * math.pi / 180.0
+
+def now_timestamp_iso() -> str:
+    return datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+
+def getenv_or_empty(key: str) -> str:
+    return os.getenv(key, "")
+
+def prompt_default(prompt: str, default: str, env_key: str = "") -> str:
+    if env_key:
+        ev = getenv_or_empty(env_key)
+        if ev:
+            print(f"{prompt} [using ENV {env_key}={ev}]")
+            return ev
+    try:
+        line = input(f"{prompt} [{default}]: ")
+    except EOFError:
+        return default
+    if line.strip() == "":
+        return default
+    return line
+
+def prompt_default_double(prompt: str, default: float, env_key: str = "") -> float:
+    r = prompt_default(prompt, str(default), env_key)
+    try:
+        return float(r)
+    except Exception:
+        print(f"[WARN] Invalid numeric input '{r}' -> using default {default}", file=sys.stderr)
+        return default
+
+def prompt_default_int(prompt: str, default: int, env_key: str = "") -> int:
+    r = prompt_default(prompt, str(default), env_key)
+    try:
+        return int(r)
+    except Exception:
+        print(f"[WARN] Invalid integer input '{r}' -> using default {default}", file=sys.stderr)
+        return default
+
+
+# -----------------------
+# Data structures
+# -----------------------
+class DataRow:
+    def _init_(self, time_s: float, gravity_mps2: float):
+        self.time_s = float(time_s)
+        self.gravity_mps2 = float(gravity_mps2)
+
+# -----------------------
+# Simulation acquisition
+# -----------------------
+def acquire_simulation(duration_s: float, sampleRate: float) -> List[DataRow]:
+    """Simulate gravity measurements (m/s^2) with drift, tidal, vibration, gaussian noise."""
+    n = max(1, int(round(duration_s * sampleRate)) + 1)
+    T: List[DataRow] = []
+    base = 9.80665  # m/s^2
+    rng = random.Random(0)
+    for i in range(n):
+        t = i / sampleRate
+        drift = 1e-6 * (t / max(1.0, duration_s))
+        tidal = 5e-7 * math.sin(2.0 * math.pi * (1.0 / 3600.0) * t)
+        vib = 5e-6 * math.sin(2.0 * math.pi * 1.2 * t) + 2e-6 * rng.gauss(0.0, 1.0)
+        g = base + drift + tidal + vib
+        T.append(DataRow(t, g))
+    return T
+
+# -----------------------
+# Adaptive median
+# -----------------------
+def median_of_vec(v: List[float]) -> float:
+    if not v:
+        return 0.0
+    s = sorted(v)
+    m = len(s)
+    if m % 2 == 1:
+        return s[m//2]
+    return 0.5 * (s[m//2 - 1] + s[m//2])
+
+def adaptive_median(x: List[float], window: int) -> List[float]:
+    if window <= 1:
+        return list(x)
+    if window % 2 == 0:
+        window += 1
+    n = len(x)
+    y = [0.0]*n
+    half = window // 2
+    for i in range(n):
+        lo = max(0, i-half)
+        hi = min(n-1, i+half)
+        segment = x[lo:hi+1]
+        med = median_of_vec(segment)
+        absdev = [abs(v - med) for v in segment]
+        mad = median_of_vec(absdev)
+        if mad <= 0.0:
+            mad = 1e-12
+        if abs(x[i] - med) > 5.0 * mad:
+            y[i] = med
+        else:
+            y[i] = x[i]
+    return y
+
+# -----------------------
+# Matrix helpers (NumPy-backed)
+# -----------------------
+def mat3_transpose(A):
+    return np.array(A).T.tolist()
+
+def mat3_mul(A, B):
+    return (np.array(A) @ np.array(B)).tolist()
+
+def mat3_add(A, B):
+    return (np.array(A) + np.array(B)).tolist()
+
+def mat3_sub(A, B):
+    return (np.array(A) - np.array(B)).tolist()
+
+def mat3_copy(A):
+    return np.array(A).copy().tolist()
+
+def mat3_vec_mul(A, v):
+    return (np.array(A) @ np.array(v)).tolist()
+
+def mat3_inv(A):
+    try:
+        M = np.array(A)
+        Minv = np.linalg.inv(M)
+        return True, Minv.tolist()
+    except np.linalg.LinAlgError:
+        return False, None
+
+# -----------------------
+# Base Filter Interface
+# -----------------------
+class Filter:
+    def run(self, data: np.ndarray, dt: float) -> np.ndarray:
+        raise NotImplementedError
+
+# -----------------------
+# 1D Kalman Filter
+# -----------------------
+class Kalman1D(Filter):
+    def _init_(self, q: float = 1e-5, r: float = 0.01):
+        self.q, self.r = q, r
+
+    def run(self, data: np.ndarray, dt: float) -> np.ndarray:
+        n = len(data)
+        x, p = 0.0, 1.0
+        results = np.zeros(n)
+        for k in range(n):
+            # Predict
+            p += self.q
+            # Update
+            k_gain = p / (p + self.r)
+            x += k_gain * (data[k] - x)
+            p *= (1 - k_gain)
+            results[k] = x
+        return results
+
+# -----------------------
+# 3D Kalman Filter + RTS Smoother (for scalar input we use state[0] as measured quantity)
+# -----------------------
+class Kalman3DRTS(Filter):
+    def _init_(self, q: float = 1e-4, r: float = 0.04):
+        self.q, self.r = q, r
+
+    def run(self, data: np.ndarray, dt: float) -> np.ndarray:
+        # Accept 1D array of scalar measurements (e.g., gravity in mGal)
+        n = len(data)
+        if n == 0:
+            return data
+
+        # State transition matrix
+        A = np.array([[1, dt, 0.5 * dt * dt],
+                      [0, 1, dt],
+                      [0, 0, 1]])
+        AT = A.T
+
+        # Process noise covariance (discrete integrated white noise model)
+        dt2, dt3, dt4, dt5 = dt*2, dt3, dt4, dt*5
+        Q = np.array([
+            [self.q * dt5 / 20.0, self.q * dt4 / 8.0, self.q * dt3 / 6.0],
+            [self.q * dt4 / 8.0, self.q * dt3 / 3.0, self.q * dt2 / 2.0],
+            [self.q * dt3 / 6.0, self.q * dt2 / 2.0, self.q * dt]
+        ])
+
+        # Storage
+        x_pred = np.zeros((n, 3))
+        x_filt = np.zeros((n, 3))
+        x_smooth = np.zeros((n, 3))
+        P_pred = np.zeros((n, 3, 3))
+        P_filt = np.zeros((n, 3, 3))
+        P_smooth = np.zeros((n, 3, 3))
+
+        # Init state & covariance
+        x_prev = np.array([data[0], 0.0, 0.0])
+        P_prev = np.diag([1e6, 1e3, 10.0])
+
+        # Forward pass
+        for k in range(n):
+            # Predict
+            xpred = A @ x_prev
+            Ppred = A @ P_prev @ AT + Q
+
+            # Innovation
+            S = Ppred[0, 0] + self.r
+            if S <= 0:
+                S = 1e-12
+            y = data[k] - xpred[0]
+
+            # Kalman gain (vector)
+            K = Ppred[:, 0] / S
+            xf = xpred + K * y
+            Pfilt = Ppred - np.outer(K, Ppred[0, :])
+
+            # Save
+            x_pred[k], x_filt[k] = xpred, xf
+            P_pred[k], P_filt[k] = Ppred, Pfilt
+
+            # Roll
+            x_prev, P_prev = xf, Pfilt
+
+        # RTS smoother
+        x_smooth[-1] = x_filt[-1]
+        P_smooth[-1] = P_filt[-1]
+        for k in range(n - 2, -1, -1):
+            # Use pseudo-inverse to be robust
+            inv_term = np.linalg.pinv(P_pred[k + 1])
+            C = P_filt[k] @ AT @ inv_term
+            x_smooth[k] = x_filt[k] + C @ (x_smooth[k + 1] - x_pred[k + 1])
+            P_smooth[k] = P_filt[k] + C @ (P_smooth[k + 1] - P_pred[k + 1]) @ C.T
+
+        # Return smoothed first state component (the estimated scalar)
+        return x_smooth[:, 0]
+
+# Backwards-compatible wrapper
+def kalman3d_rts_smoother(data: np.ndarray, dt: float, q: float = 1e-4, R: float = 0.04) -> np.ndarray:
+    kf = Kalman3DRTS(q=q, r=R)
+    return kf.run(data, dt)
+
+# -----------------------
+# Median Filter (1D)
+# -----------------------
+class MedianFilter(Filter):
+    def _init_(self, window: int = 5):
+        self.window = window
+
+    def run(self, data: np.ndarray, dt: float) -> np.ndarray:
+        if not _HAS_SCIPY:
+            # Use NumPy fallback median (slow but works)
+            n = len(data)
+            out = np.zeros(n)
+            half = self.window // 2
+            for i in range(n):
+                left, right = max(0, i-half), min(n, i+half+1)
+                out[i] = np.median(data[left:right])
+            return out
+        else:
+            # medfilt requires odd-sized kernel
+            k = self.window if self.window % 2 == 1 else self.window + 1
+            return medfilt(data, kernel_size=k)
+
+# -----------------------
+# Bayesian Smoother (very simplified)
+# -----------------------
+class BayesianSmoother(Filter):
+    def _init_(self, prior_var: float = 1.0):
+        self.prior_var = prior_var
+
+    def run(self, data: np.ndarray, dt: float) -> np.ndarray:
+        mu, var = 0.0, self.prior_var
+        results = []
+        for z in data:
+            # Prediction: identity
+            var_post = 1 / (1/var + 1/self.prior_var)
+            mu = var_post * (mu/var + z/self.prior_var)
+            var = var_post
+            results.append(mu)
+        return np.array(results)
+
+# -----------------------
+# Notch Filter wrapper
+# -----------------------
+class NotchFilter(Filter):
+    def _init_(self, freq: float, Q: float, fs: float):
+        self.freq, self.Q, self.fs = freq, Q, fs
+
+    def run(self, data: np.ndarray, dt: float) -> np.ndarray:
+        if not _HAS_SCIPY:
+            _require_scipy("NotchFilter")
+        b, a = iirnotch(self.freq, self.Q, self.fs)
+        return filtfilt(b, a, data)
+
+# -----------------------
+# Wiener Filter wrapper
+# -----------------------
+class WienerFilter(Filter):
+    def run(self, data: np.ndarray, dt: float) -> np.ndarray:
+        if not _HAS_SCIPY:
+            _require_scipy("WienerFilter")
+        return wiener(data)
+
+# -----------------------
+# Pipeline Manager (flexible)
+# -----------------------
+class PipelineManager:
+    """
+    Keeps a list of Filter objects. Filters must implement .run(data, dt) -> ndarray.
+    Special-case: Kalman1D or Kalman3DRTS produce smoothed series; RTS-like classes
+    that expect (xhat, P) should be implemented as Filters that accept arrays.
+    For simplicity we rely on the Filter.run signature everywhere.
+    """
+    def _init_(self):
+        self.filters: List[Filter] = []
+
+    def add_filter(self, filter_obj: Filter):
+        self.filters.append(filter_obj)
+
+    def run(self, data: np.ndarray, dt: float) -> np.ndarray:
+        out = data.copy()
+        for f in self.filters:
+            out = f.run(out, dt)
+        return out
+
+# -----------------------
+# Signal / Synthetic Data Generators
+# -----------------------
+def simulate_data(T=200, dt=1.0):
+    """Generate synthetic gravity + bias + tilt + environment signals."""
+    t = np.arange(T) * dt
+    g = 9.8 + 0.01 * np.sin(0.05 * t)   # gravity variation
+    bias = 0.05 * np.sin(0.01 * t)      # slow bias drift
+    tilt_x = 0.001 * np.sin(0.2 * t)    # small tilt oscillation
+    tilt_y = 0.001 * np.cos(0.2 * t)
+    temp = 20 + 0.5 * np.sin(0.01 * t)  # environment
+    press = 1013 + 2 * np.cos(0.005 * t)
+
+    measurements = np.vstack([g, bias, tilt_x, tilt_y, temp, press]).T
+    return t, measurements
+
+def generate_signal(n_points=1000, dt=0.1,
+                    signal_type="sine", noise_type="gaussian",
+                    noise_level=0.1) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    t = np.arange(0, n_points * dt, dt)
+    if signal_type == "sine":
+        true_signal = np.sin(2 * np.pi * 0.5 * t)
+    elif signal_type == "square":
+        true_signal = np.sign(np.sin(2 * np.pi * 0.5 * t))
+    elif signal_type == "step":
+        true_signal = np.where(t > t[-1] / 2, 1.0, 0.0)
+    elif signal_type == "chirp":
+        true_signal = np.sin(2 * np.pi * (0.1 * t**2))
+    elif signal_type == "random":
+        true_signal = np.cumsum(np.random.randn(len(t))) * 0.01
+    else:
+        raise ValueError(f"Unknown signal_type {signal_type}")
+
+    if noise_type == "gaussian":
+        noise = np.random.normal(0, noise_level, len(t))
+    elif noise_type == "uniform":
+        noise = np.random.uniform(-noise_level, noise_level, len(t))
+    elif noise_type == "spikes":
+        noise = np.zeros(len(t))
+        idx = np.random.choice(len(t), size=len(t)//20, replace=False)
+        noise[idx] = np.random.normal(0, noise_level*10, len(idx))
+    else:
+        raise ValueError(f"Unknown noise_type {noise_type}")
+
+    return t, true_signal, true_signal + noise
+
+# -----------------------
+# Gravity corrections
+# -----------------------
+def latitude_normal_gravity_mgal(lat_deg: float) -> float:
+    lat = deg2rad(lat_deg)
+    sinlat = math.sin(lat)
+    gamma = 978032.67715 * (1.0 + 0.00193185138639 * (sinlat*sinlat)) / math.sqrt(1.0 - 0.00669437999013 * (sinlat*sinlat))
+    return gamma * 1e5  # convert to mGal from m/s^2 (1 m/s^2 = 1e5 mGal)
+
+def free_air_corr_mgal(elev_m: float) -> float:
+    return 0.3086 * elev_m
+
+def bouguer_corr_mgal(elev_m: float, rho_kgm3: float) -> float:
+    rho_gcm3 = rho_kgm3 / 1000.0
+    return 0.0419 * rho_gcm3 * elev_m
+
+def simple_tide_estimate_mgal(time_h: float) -> float:
+    return 0.01 * math.sin(2.0 * math.pi * (time_h / 12.42))
+
+class ProcessResult:
+    def _init_(self):
+        self.raw_mgal = 0.0
+        self.latitude_norm_mgal = 0.0
+        self.free_air_mgal = 0.0
+        self.bouguer_mgal = 0.0
+        self.drift_mgal = 0.0
+        self.tide_mgal = 0.0
+        self.corrected_mgal = 0.0
+        self.sample_rate = 0
+        self.duration_s = 0.0
+
+def process_gravity_data(raw_mgal: float, lat_deg: float, elev_m: float, time_h: float, drift_rate_mGal_per_hr: float, density_kgm3: float = 2670.0) -> ProcessResult:
+    r = ProcessResult()
+    g_lat = latitude_normal_gravity_mgal(lat_deg)
+    fa = free_air_corr_mgal(elev_m)
+    bc = bouguer_corr_mgal(elev_m, density_kgm3)
+    dc = drift_rate_mGal_per_hr * time_h
+    tide = simple_tide_estimate_mgal(time_h)
+    corrected = raw_mgal - g_lat + fa - bc - dc - tide
+    r.raw_mgal = raw_mgal
+    r.latitude_norm_mgal = g_lat
+    r.free_air_mgal = fa
+    r.bouguer_mgal = bc
+    r.drift_mgal = dc
+    r.tide_mgal = tide
+    r.corrected_mgal = corrected
+    return r
+
+# -----------------------
+# Fault anomaly
+# -----------------------
+def fault_anomaly(x: List[float], h1: float, h2: float, t: float, dc_gcm3: float, theta_deg: float) -> List[float]:
+    G_const = 6.67430e-11
+    rho = dc_gcm3 * 1000.0  # g/cm3 -> kg/m3
+    theta = deg2rad(theta_deg)
+    out = []
+    for xi in x:
+        a = xi * math.cos(theta)
+        val = (2.0 * G_const * rho * t) * (math.atan(a/h1) - math.atan(a/h2))
+        out.append(val * 1e5)  # convert to mGal
+    return out
+
+# -----------------------
+# I/O
+# -----------------------
+def write_csv(filename: str, rows: List[DataRow]) -> bool:
+    try:
+        with open(filename, 'w', newline='') as f:
+            f.write("time_s,gravity_mps2\n")
+            for r in rows:
+                f.write(f"{r.time_s:.12f},{r.gravity_mps2:.12f}\n")
+        return True
+    except Exception as e:
+        print(f"[ERROR] write_csv failed: {e}", file=sys.stderr)
+        return False
+
+def write_json_metadata(filename: str, res: ProcessResult, raw_mean_mgal: float, smoothed_mean_mgal: float, latitude: float, elevation: float, timestamp: str) -> bool:
+    try:
+        payload = {
+            "timestamp": timestamp,
+            "raw_mean_mgal": raw_mean_mgal,
+            "smoothed_mean_mgal": smoothed_mean_mgal,
+            "latitude": latitude,
+            "elevation": elevation,
+            "result": {
+                "raw_mgal": res.raw_mgal,
+                "latitude_norm_mgal": res.latitude_norm_mgal,
+                "free_air_mgal": res.free_air_mgal,
+                "bouguer_mgal": res.bouguer_mgal,
+                "drift_mgal": res.drift_mgal,
+                "tide_mgal": res.tide_mgal,
+                "corrected_mgal": res.corrected_mgal
+            }
+        }
+        with open(filename, 'w') as f:
+            json.dump(payload, f, indent=2)
+        return True
+    except Exception as e:
+        print(f"[ERROR] write_json_metadata failed: {e}", file=sys.stderr)
+        return False
+
+# -----------------------
+# Main application flow (unified)
+# -----------------------
+def main():
+    print("=== Gravimeter Mission-Grade (Python) with Full Filtering Pipeline ===")
+    print("Modes:")
+    print(" 1 = Signal Filtering Test (synthetic data)")
+    print(" 2 = Gravimeter Acquisition & Processing (SIM)")
+    print(" 3 = Fault Modeling")
+    print(" 4 = Full Mission (Acq + Fault Model)")
+    mode = prompt_default_int("Select mode (1/2/3/4)", 1)
+
+    # Mode 1: Filtering Test
+    if mode == 1:
+        print("\n--- Running Signal Filtering Test ---")
+        t, true_signal, noisy_signal = generate_signal(
+            n_points=500, dt=0.05,
+            signal_type="sine", noise_type="gaussian", noise_level=0.2
+        )
+        dt = t[1] - t[0]
+        pipeline = PipelineManager()
+        pipeline.add_filter(MedianFilter(window=5))
+        pipeline.add_filter(Kalman1D())
+        pipeline.add_filter(WienerFilter() if _HAS_SCIPY else BayesianSmoother(prior_var=1.0))
+
+        processed_signal = pipeline.run(noisy_signal, dt=dt)
+
+        # Evaluate simple MSE
+        mse_raw = np.mean((true_signal - noisy_signal)**2)
+        mse_proc = np.mean((true_signal - processed_signal)**2)
+        print(f"Raw MSE: {mse_raw:.6f}, Processed MSE: {mse_proc:.6f}")
+
+        # Save results to CSV (time, true, noisy, processed)
+        fname = f"filtered_output_{now_timestamp_iso()}.csv"
+        np.savetxt(fname,
+                   np.vstack([t, true_signal, noisy_signal, processed_signal]).T,
+                   delimiter=",",
+                   header="time,true,noisy,processed",
+                   comments="")
+        print(f"Saved results to {fname}")
+
+        # Plot
+        plt.figure(figsize=(10, 6))
+        plt.plot(t, true_signal, label="True Signal", linewidth=2)
+        plt.plot(t, noisy_signal, label="Noisy Signal", alpha=0.5)
+        plt.plot(t, processed_signal, label="Processed Signal", linewidth=2)
+        plt.legend(); plt.xlabel("Time [s]"); plt.ylabel("Signal")
+        plt.title("Signal Filtering Pipeline Test")
+        plt.show()
+        return
+
+    # Modes 2/4: Acquisition
+    run_acq = (mode == 2 or mode == 4)
+    run_model = (mode == 3 or mode == 4)
+    dataTable: List[DataRow] = []
+
+    if run_acq:
+        print("\n--- Data Acquisition Configuration ---")
+        simMode = prompt_default_int("Use simulation (1) or serial hardware (0)?", 1)
+        sampleRate = prompt_default_double("Sample rate (Hz)", 1.0)
+        duration = prompt_default_double("Duration (s)", 60.0)
+        outputBase = prompt_default("Output basename", "gravimeter_mission")
+
+        latitude = prompt_default_double("Latitude (deg)", 0.0)
+        elevation = prompt_default_double("Elevation (m)", 0.0)
+        driftRate = prompt_default_double("Drift rate (mGal/hr)", 0.02)
+
+        q_acq = prompt_default_double("Process accel-noise spectral density q (Acquisition)", 1e-4)
+        R_acq = prompt_default_double("Measurement variance R (mGal^2) (Acquisition)", 0.04)
+
+        if simMode == 1:
+            print("Running in SIMULATION mode.")
+            dataTable = acquire_simulation(duration, sampleRate)
+        else:
+            print("Serial hardware acquisition not implemented. Exiting acquisition.")
+            return
+
+        # Convert to mGal
+        raw_g_mGal = np.array([r.gravity_mps2 * 1e5 for r in dataTable])
+
+        # Filtering pipeline for acquisition data
+        print("\nProcessing acquired data...")
+        dt_acq = 1.0 / sampleRate
+
+        acq_pipeline = PipelineManager()
+        window_acq = max(3, int(round(sampleRate * 5)) + 1)
+        print(f"Applying adaptive median filter (window={window_acq})...")
+        # adaptive median works on lists -> convert back/forth
+        meded = adaptive_median(raw_g_mGal.tolist(), window_acq)
+        meded_arr = np.array(meded)
+
+        # Apply Kalman3D+RTS smoother (this class returns smoothed 1D state)
+        print("Applying 3-state Kalman + RTS smoother...")
+        k3 = Kalman3DRTS(q=q_acq, r=R_acq)
+        smoothed_g_mGal = k3.run(meded_arr, dt_acq)
+
+        mean_raw = np.mean(raw_g_mGal) if raw_g_mGal.size > 0 else 0.0
+        mean_smoothed = np.mean(smoothed_g_mGal) if smoothed_g_mGal.size > 0 else 0.0
+        time_h = duration / 3600.0
+        results = process_gravity_data(mean_smoothed, latitude, elevation, time_h, driftRate, 2670.0)
+        results.sample_rate = int(round(sampleRate))
+        results.duration_s = duration
+
+        ts = now_timestamp_iso()
+        csvname = f"{outputBase}_{ts}.csv"
+        jsonname = f"{outputBase}_{ts}_metadata.json"
+        rawcsv = f"{outputBase}_{ts}_raw.csv"
+        proc_csv = f"{outputBase}_{ts}_processed.csv"
+
+        print(f"Saving raw CSV: {rawcsv}")
+        with open(rawcsv, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["time_s", "gravity_mps2"])
+            for r in dataTable:
+                writer.writerow([r.time_s, r.gravity_mps2])
+
+        print(f"Saving processed CSV: {proc_csv}")
+        with open(proc_csv, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["time_s", "gravity_mgal"])
+            for i in range(len(dataTable)):
+                writer.writerow([dataTable[i].time_s, smoothed_g_mGal[i]])
+
+        print(f"Saving JSON metadata: {jsonname}")
+        write_json_metadata(jsonname, results,
+                            raw_mean_mgal=mean_raw,
+                            smoothed_mean_mgal=mean_smoothed,
+                            latitude=latitude, elevation=elevation, timestamp=ts)
+
+        print("Acquisition + processing complete.")
+
+    # Modes 3/4: Fault Modeling
+    if run_model:
+        print("\n--- Fault Modeling ---")
+        h1 = prompt_default_double("Depth downthrown h1 (m)", 8.0)
+        h2 = prompt_default_double("Depth upthrown h2 (m)", 4.0)
+        t_fault = prompt_default_double("Sheet thickness t (m)", 1.0)
+        dc = prompt_default_double("Density contrast (g/cm^3)", 0.4)
+        dx = prompt_default_double("Horizontal increment dx (m)", 2.0)
+        theta = prompt_default_double("Inclined angle (deg)", 60.0)
+
+        x = []
+        xi = -24.0
+        while xi <= 24.0 + 1e-9:
+            x.append(xi)
+            xi += dx
+
+        gz_vert = fault_anomaly(x, h1, h2, t_fault, dc, 90.0)
+        gz_incl = fault_anomaly(x, h1, h2, t_fault, dc, theta)
+
+        print("Position(m)   Vertical(mGal)   Inclined(mGal)")
+        for i in range(len(x)):
+            print(f"{x[i]:8.3f} {gz_vert[i]:15.6f} {gz_incl[i]:15.6f}")
+
+        saveModel = prompt_default("Save model output to CSV? (y/n)", "n")
+        if saveModel.lower() == "y":
+            fname = f"fault_model_{now_timestamp_iso()}.csv"
+            with open(fname, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["x_m","vertical_mgal","inclined_mgal"])
+                for i in range(len(x)):
+                    writer.writerow([x[i],gz_vert[i],gz_incl[i]])
+            print(f"Saved model CSV: {fname}")
+
+    print("\nProgram finished.")
+
+if _name_ == "_main_":
+    main()
